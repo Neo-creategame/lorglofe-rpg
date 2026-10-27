@@ -75,6 +75,56 @@ const floorIdx = f => Math.round(f * 2) - 1;
 const floorList = c => { const out = []; for (let f = 1; f <= c + 1e-9; f += 0.5) out.push(f); return out; };
 const SAVE = { cleared: 0 };
 const TOWN_SHOPS = [['お店', 6, 5], ['宿屋', 17, 5], ['鍛冶屋', 28, 5], ['倉庫', 6, 14]];
+// ---- セーブ＆ロード機能 ----
+const SAVE_KEY = 'alone_rpg_save_data_v1';
+
+// データを保存する
+function saveGame() {
+  try {
+    const data = {
+      cleared: SAVE.cleared,
+      player: { ...PLAYER },
+      potions: { ...POTIONS },
+      weapon: weapon,
+      artifactEq: artifactEq,
+      equipped: EQUIPPED,
+      backpack: BACKPACK,
+      storage: STORAGE
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    console.error('セーブ失敗:', e);
+    return false;
+  }
+}
+
+// データを読み込む
+function loadGame() {
+  try {
+    const json = localStorage.getItem(SAVE_KEY);
+    if (!json) return false;
+    const data = JSON.parse(json);
+
+    SAVE.cleared = data.cleared || 0;
+    Object.assign(PLAYER, data.player);
+    Object.assign(POTIONS, data.potions);
+    weapon = data.weapon;
+    artifactEq = data.artifactEq;
+
+    Object.keys(EQUIPPED).forEach(k => { EQUIPPED[k] = data.equipped[k]; });
+    data.backpack.forEach((item, i) => { BACKPACK[i] = item; });
+    data.storage.forEach((item, i) => { STORAGE[i] = item; });
+
+    return true;
+  } catch (e) {
+    console.error('ロード失敗:', e);
+    return false;
+  }
+}
+
+// ゲーム起動時にセーブデータがあれば自動ロード！
+// loadGame();
 
 function genTown() {
   const t = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) => (x === 0 || y === 0 || x === W - 1 || y === H - 1 ? 1 : 0)));
@@ -528,6 +578,8 @@ BACKPACK[0] = rollWeapon('dual'); BACKPACK[1] = rollWeapon('bow'); BACKPACK[2] =
 const addToPack = it => { const i = BACKPACK.indexOf(null); if (i < 0) return false; BACKPACK[i] = it; return true; };
 const getEq = s => s === 'weapon' ? weapon : s === 'artifact' ? artifactEq : EQUIPPED[s];
 const setEq = (s, it) => { if (s === 'weapon') weapon = it; else if (s === 'artifact') artifactEq = it; else EQUIPPED[s] = it; };
+// ゲーム起動時にセーブデータがあれば自動ロード！
+loadGame();
 
 const wear = (it, n) => {
   if (!it || it.dur <= 0) return false;
@@ -1202,6 +1254,7 @@ class Main extends Phaser.Scene {
   }
 
   travel(floor, hp = this.hp, notice = null) {
+    saveGame();
     this.leaving = true;
     const cam = this.cameras.main;
     cam.fadeOut(300);
@@ -1488,6 +1541,7 @@ class Main extends Phaser.Scene {
 
   onBossDefeated() {
     SAVE.cleared = Math.max(SAVE.cleared, this.floor);
+    saveGame();
     const first = !this.stairsOpen;
     this.stairsOpen = true;
     this.stairsGfx.setFillStyle(STAIRS_OPEN);
@@ -1650,7 +1704,10 @@ class PauseScene extends MenuScene {
     if (mode === 'top') {
       this.btn(cx, 190, '町へ戻る', () => this.go(0), this.floor !== 0);
       this.btn(cx, 250, '攻略済みの階層を選ぶ', () => this.show('floors'), cleared > 0);
-      this.btn(cx, 310, '再開', () => this.close());
+      this.btn(cx, 310, '手動セーブ', () => {
+        if (saveGame()) this.btn(cx, 430, 'セーブしました！', null, false);
+      });
+      this.btn(cx, 370, '再開', () => this.close());
       return;
     }
     const per = 6, list = floorList(cleared), pages = Math.ceil(list.length / per);
@@ -1832,6 +1889,7 @@ class InnScene extends MenuScene {
 
   rest() {
     if (!spendGold(TOWN_INN_COST)) { this.note = 'ゴールドが足りません'; return this.render(); }
+    saveGame();
     this.scene.get('main').hp = maxHp(); this.note = 'HPが全回復しました'; this.render();
   }
 }
