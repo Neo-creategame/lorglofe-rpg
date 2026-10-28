@@ -592,7 +592,15 @@ const rollArmor = (slot, floor) => {
 const armorStats = () => {
   let hp = 0, red = 0;
   for (const it of Object.values(EQUIPPED)) if (it && it.dur > 0) { hp += it.hp; red += it.red; }
-  return { hp, red: Math.min(red, RED_CAP) };
+  
+  // 軽減率が上限を超えている場合、超えた分（1% = 0.01につきHP+1）をHP加算に変換
+  if (red > RED_CAP) {
+    const excessPct = Math.floor((red - RED_CAP) * 100); // 超過分のパーセンテージ（例: 0.65 -> 5%）
+    hp += excessPct; // 1%につきHP+1
+    red = RED_CAP;   // 軽減率は上限（60%）に固定
+  }
+
+  return { hp, red };
 };
 const armorScore = it => it.hp + it.red * 500;
 const takeDamage = d => Math.max(1, Math.round(d * (1 - armorStats().red)));
