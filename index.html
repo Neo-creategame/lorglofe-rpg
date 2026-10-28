@@ -949,9 +949,9 @@ class Main extends Phaser.Scene {
     }
     // ★ 15階以上なら超高HP（22倍）、それ未満なら通常のボスHP倍率（6倍）を適用
     if (isSub(this.floor)) {
-  const hpMult = this.floor >= 15 ? BOSS.hpMultSpecial : BOSS.hpMult;
+  const hpMult = (this.floor >= 15 || isTenFloor(this.floor)) ? BOSS.hpMultSpecial : BOSS.hpMult;
   this.boss = this.spawnEnemy(this.stairs.x, this.stairs.y, Math.round(eh * hpMult), BOSS, true);
-}
+    }
   }
 
   spawnEnemy(x, y, hp, def = ENEMY, boss = false) {
@@ -1630,8 +1630,8 @@ class Main extends Phaser.Scene {
 
     // ★ 2. 10階以上のボス戦で、敵の手下（Minion）が倒された場合（ボスのHP15%回復）
     // （※ !e.isAllyMinion を追加して、味方ミニオン撃破でボスが回復するのを防ぐ）
-    if (!e.boss && !e.isAllyMinion && this.floor >= 10 && this.boss && this.boss.hp > 0) {
-      const healAmount = Math.round(this.boss.max * 0.15);
+    if (!e.boss && !e.isAllyMinion && !e.isCrystal && this.floor >= 10 && this.boss && this.boss.hp > 0) {
+      const healAmount = Math.round(this.boss.max * 0.05);
       this.boss.hp = Math.min(this.boss.max, this.boss.hp + healAmount);
       this.floatText(this.boss.c.x, this.boss.c.y - this.boss.r - 20, '+15%', '#7cf0a0', '18px', 1000);
     }
