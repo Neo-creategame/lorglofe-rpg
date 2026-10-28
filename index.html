@@ -1302,6 +1302,7 @@ class Main extends Phaser.Scene {
 
   die() {
     applyDeathPenalty();
+    saveGame();
     this.clearShots();
     this.travel(0, Math.max(1, Math.round(maxHp() * DEATH.respawnHpPct)), '倒れた…町で復活(未割り振りポイント没収・耐久半減)');
   }
@@ -2117,7 +2118,7 @@ class PauseScene extends MenuScene {
     if (this.page + 1 < pages) this.btn(cx + 150, 390, '▶', () => { this.page++; this.show('floors'); });
   }
 
-  go(floor) { const m = this.scene.get('main'); this.close(); m.travel(floor); }
+  go(floor) {saveGame(); const m = this.scene.get('main'); this.close(); m.travel(floor); }
 }
 
 const TIER_COLORS = [0x8a6a4a, 0x9aa5b1, 0x4f8fd1, 0x7cf0d0];
