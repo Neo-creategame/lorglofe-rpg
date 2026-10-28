@@ -185,7 +185,21 @@ const WEAPON_VARIATIONS = {
     { name: 'ハルバード', mult: 1.25, cdMult: 1.15 }
   ]
 };
-
+// ポーションアイテムを作成する関数
+const createPotion = (kind = 'small', count = 1) => {
+  const def = POTION_DEF[kind];
+  return {
+    slot: 'potion',
+    kind: kind,           // 'small' または 'full'
+    name: def.name,
+    pct: def.pct,
+    stack: count,         // 現在の所持数
+    maxStack: 5,          // 1枠5個まで
+    dur: 1,               // ★ エラー回避用に設定
+    durMax: 1,
+    lv: 0
+  };
+};
 const WEAPON_SCALE = { perFloor: 0.12 };
 const weaponFloorMult = floor => 1 + WEAPON_SCALE.perFloor * (Math.max(1, floor) - 1);
 
@@ -306,6 +320,8 @@ const BEHAVIORS = {
       const speed = 800, duration = 250, ang = s.ang;
       s.inv = now + duration + 150;
 
+      const hitEnemies = new Set();
+
       const dashFx = s.time.addEvent({
         delay: 16,
         repeat: Math.floor(duration / 16),
@@ -320,7 +336,8 @@ const BEHAVIORS = {
           s.tweens.add({ targets: gh, alpha: 0, duration: 200, onComplete: () => gh.destroy() });
 
           s.enemies.forEach(e => {
-            if (e.hp > 0 && !e.isAllyMinion && Math.hypot(e.c.x - p.x, e.c.y - p.y) < e.r + 28) {
+            if (e.hp > 0 && !e.isAllyMinion && !hitEnemies.has(e) && Math.hypot(e.c.x - p.x, e.c.y - p.y) < e.r + 28) {
+              hitEnemies.add(e);
               s.damage(e, Math.round(dmg * 2.0));
             }
           });
@@ -409,11 +426,15 @@ const BOSS = {
   hpMult: 6, speed: 70, aggro: 260, r: 20, touchDmg: 20, color: 0xb15cff, expMult: 5, weaponDropRate: 0.10,
   attackRange: 340, firstDelay: 1500, cd: 2200, cdRage: 1400, rageAt: 0.5,
   shotDmg: 12, dashSpeed: 430, dashTime: 600, dashMult: 1.5,
-  minCallFloor: 3.5, maxMinions: 3,
-  hpMult15F: 22.0, // 通常ボス(6倍)の約3.6倍＝22倍の超高HP
+  minCallFloor: 10, maxMinions: 5,
+  hpMultSpecial: 22.0,
   shieldThresholds: [0.75, 0.50, 0.25] // シールド発動ライン
 };
+// 10の倍数階かどうかを判定するヘルパー関数
+const isTenFloor = f => f >= 15 && Math.floor(f) % 10 === 0;
 
+// ★ Qスキル（3段階進化）の状態管理変数
+let qSkillLevel = 1; // 1 〜 3 段階
 const bossAtkFloorMult = floor => 1 + 0.15 * (Math.max(1, floor) - 1);
 
 // ---- 遺物(アーティファクト) ----
@@ -449,8 +470,8 @@ const bossDmgMult = () => 1 + artifactStat('bossPct') / 100;
 const GOLD = { start: 100, perKill: 6, perFloor: 4, bossMult: 10 };
 const goldFor = (floor, boss) => (GOLD.perKill + GOLD.perFloor * floor) * (boss ? GOLD.bossMult : 1);
 
-const TOWN_INN_COST = 20;
-const POTION_DEF = { small: { name: '小回復', pct: 0.25, price: 15 }, full: { name: '全回復', pct: 1, price: 60 } };
+const TOWN_INN_COST = 500;
+const POTION_DEF = { small: { name: '小回復', pct: 0.25, price: 250 }, full: { name: '全回復', pct: 1, price: 1000 } };
 const POTIONS = { small: 0, full: 0 };
 const SHOP = { sellPerAtk: 0.8, sellPerArmor: 2, sellPerArtifactPct: 15 };
 const DEATH = { respawnHpPct: 0.1, durKeep: 0.5 };
@@ -575,7 +596,32 @@ const PACK_COLS = 5, PACK_ROWS = 4, SLOT_ORDER = ['weapon', ...SLOT_KEYS, 'artif
 const BACKPACK = Array(PACK_COLS * PACK_ROWS).fill(null);
 const STORAGE = Array(PACK_COLS * PACK_ROWS).fill(null);
 BACKPACK[0] = rollWeapon('dual'); BACKPACK[1] = rollWeapon('bow'); BACKPACK[2] = rollWeapon('greatsword'); BACKPACK[3] = rollWeapon('spear');
-const addToPack = it => { const i = BACKPACK.indexOf(null); if (i < 0) return false; BACKPACK[i] = it; return true; };
+// ★ パワーアップした addToPack 関数！
+const addToPack = it => {
+  // 1. ポーション（スタックできるアイテム）の場合の自動まとめ処理
+  if (it.slot === 'potion') {
+    for (let i = 0; i < BACKPACK.length; i++) {
+      const slotItem = BACKPACK[i];
+      // 同じ種類のポーションで、まだ5個未満の枠があるかチェック！
+      if (slotItem && slotItem.slot === 'potion' && slotItem.kind === it.kind && slotItem.stack < slotItem.maxStack) {
+        const space = slotItem.maxStack - slotItem.stack;
+        if (it.stack <= space) {
+          slotItem.stack += it.stack; // すっぽり収まった！
+          return true;
+        } else {
+          slotItem.stack = slotItem.maxStack; // 満タンにして残りを次の枠へ
+          it.stack -= space;
+        }
+      }
+    }
+  }
+
+  // 2. まとまりきらなかった分、または装備品などは空いているスロットへ！
+  const emptyIndex = BACKPACK.indexOf(null);
+  if (emptyIndex < 0) return false; // バッグが満杯のとき
+  BACKPACK[emptyIndex] = it;
+  return true;
+};
 const getEq = s => s === 'weapon' ? weapon : s === 'artifact' ? artifactEq : EQUIPPED[s];
 const setEq = (s, it) => { if (s === 'weapon') weapon = it; else if (s === 'artifact') artifactEq = it; else EQUIPPED[s] = it; };
 // ゲーム起動時にセーブデータがあれば自動ロード！
@@ -644,7 +690,9 @@ const BOSS_PATTERNS = {
         if (s.enemies.filter(x => !x.boss).length >= BOSS.maxMinions) break;
         const a = Math.random() * Math.PI * 2, d = 50 + Math.random() * 40;
         const sx = e.c.x + Math.cos(a) * d, sy = e.c.y + Math.sin(a) * d;
-        s.spawnEnemy(sx, sy, eh);
+        // ★ isMinion: true フラグを持つ敵を生成
+        const minion = s.spawnEnemy(sx, sy, eh);
+        minion.isMinion = true;
         s.floatText(sx, sy, '✦召喚', '#b15cff', '14px', 800);
       }
     }
@@ -886,7 +934,7 @@ class Main extends Phaser.Scene {
     }
     // ★ 15階以上なら超高HP（22倍）、それ未満なら通常のボスHP倍率（6倍）を適用
     if (isSub(this.floor)) {
-      const hpMult = this.floor >= 15 ? BOSS.hpMult15F : BOSS.hpMult;
+      const hpMult = isTenFloor(this.floor) ? BOSS.hpMultSpecial : BOSS.hpMult;
       this.boss = this.spawnEnemy(this.stairs.x, this.stairs.y, Math.round(eh * hpMult), BOSS, true);
     }
   }
@@ -969,7 +1017,7 @@ class Main extends Phaser.Scene {
       onComplete: () => flash.destroy()
     });
   }
-  muzzleFlash(x, y, ang, color = 0xffe08a) {
+  /*muzzleFlash(x, y, ang, color = 0xffe08a) {
     const flash = this.add.graphics().setDepth(3);
     flash.fillStyle(color, 0.9).beginPath().moveTo(x, y);
     const spread = Math.PI * 0.35;
@@ -986,7 +1034,7 @@ class Main extends Phaser.Scene {
       duration: 90,
       onComplete: () => flash.destroy()
     });
-  }
+  }*/
 
   setupPlayer() {
     const r0 = rooms[0];
@@ -1005,7 +1053,7 @@ class Main extends Phaser.Scene {
     this.keys = this.input.keyboard.addKeys({
       up: 'W', down: 'S', left: 'A', right: 'D',
       up2: 'UP', down2: 'DOWN', left2: 'LEFT', right2: 'RIGHT',
-      atk: 'SPACE', skill: 'E', bag: 'I', dodge: 'SHIFT', use: 'F', pause: 'TAB', potS: 'Q', potF: 'R', bossWeapon1: 'ONE', bossWeapon2: 'TWO', bossWeapon3: 'THREE', bossWeapon4: 'FOUR'
+      atk: 'SPACE', skill: 'E', bag: 'I', dodge: 'SHIFT', use: 'F', pause: 'TAB', subSkill: 'Q', potF: 'R', bossWeapon1: 'ONE', bossWeapon2: 'TWO', bossWeapon3: 'THREE', bossWeapon4: 'FOUR'
     });
     
     this.input.on('pointerdown', () => this.attack());
@@ -1026,7 +1074,7 @@ class Main extends Phaser.Scene {
     const speed = 650, duration = 220;
     const end = now + duration;
     this.inv = now + duration + 100;
-
+    const hitEnemies = new Set();
     const dashFx = this.time.addEvent({
       delay: 16,
       repeat: Math.floor(duration / 16),
@@ -1041,11 +1089,13 @@ class Main extends Phaser.Scene {
         this.tweens.add({ targets: gh, alpha: 0, duration: 200, onComplete: () => gh.destroy() });
 
         for (const e of this.enemies) {
-          if (e.hp > 0 && Math.hypot(e.c.x - p.x, e.c.y - p.y) < e.r + 20) {
+          if (e.hp > 0 && !e.isAllyMinion && !hitEnemies.has(e) && Math.hypot(e.c.x - p.x, e.c.y - p.y) < e.r + 20) {
+            hitEnemies.add(e); // 当たった敵を記録！
             this.damage(e, dmg);
           }
+          }
         }
-      }
+      
     });
   }
 
@@ -1103,7 +1153,7 @@ class Main extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(k.bossWeapon3)) this.obtainBossWeapon('dragon_chain');
     if (Phaser.Input.Keyboard.JustDown(k.bossWeapon4)) this.obtainBossWeapon('lightning_staff');
 
-    if (Phaser.Input.Keyboard.JustDown(k.potS)) this.usePotion('small');
+    if (Phaser.Input.Keyboard.JustDown(k.subSkill)) this.subSkill();
     if (Phaser.Input.Keyboard.JustDown(k.potF)) this.usePotion('full');
     if (Phaser.Input.Keyboard.JustDown(k.bag) && !this.leaving) { this.scene.pause(); this.scene.launch('backpack'); return; }
     this.updateArrows(dt);
@@ -1243,10 +1293,30 @@ class Main extends Phaser.Scene {
 
   usePotion(kind) {
     if (this.floor === 0 || this.leaving) return;
-    if (POTIONS[kind] <= 0) return this.popup('消耗品がありません', '#a0a7b8');
     if (this.hp >= maxHp()) return this.popup('HPは満タンです', '#a0a7b8');
-    POTIONS[kind]--;
-    this.hp = Math.min(maxHp(), this.hp + Math.ceil(maxHp() * POTION_DEF[kind].pct));
+
+    // バッグの中から該当するポーションを探す
+    const index = BACKPACK.findIndex(it => it && it.slot === 'potion' && it.kind === kind);
+
+    // ポーションがバッグにない場合
+    if (index < 0) {
+      return this.popup(`${POTION_DEF[kind].name}を持っていません`, '#a0a7b8');
+    }
+
+    // バッグのポーションを1つ減らす
+    const pot = BACKPACK[index];
+    pot.stack--;
+
+    // 最後の1個を使い切ったらバッグのスロットを空(null)にする
+    if (pot.stack <= 0) {
+      BACKPACK[index] = null;
+    }
+
+    // HP回復処理とポップアップ表示
+    const healHp = Math.ceil(maxHp() * POTION_DEF[kind].pct);
+    this.hp = Math.min(maxHp(), this.hp + healHp);
+    this.floatText(this.p.x, this.p.y - 20, `+${healHp} HP`, '#7cf0a0', '16px', 1000);
+    saveGame();
   }
 
   goUp() {
@@ -1276,6 +1346,20 @@ class Main extends Phaser.Scene {
     BEHAVIORS[weapon.type].skill(this, atkTotal(this));
     this.useWeapon(DURABILITY.weaponSkill);
   }
+  subSkill() {
+  const n = this.time.now;
+  this.nextSubSkill = this.nextSubSkill || 0;
+  if (n < this.nextSubSkill || this.dodge || this.leaving) return;
+  
+  const cd = 4000; // クールダウン4秒
+  this.nextSubSkill = n + cd;
+  
+  // 周囲全方向に衝撃波（吹き飛ばし＋スタン）
+  const dmg = Math.round(atkTotal(this) * 1.2);
+  this.cameras.main.shake(100, 0.008);
+  this.strike(0, Math.PI, 100, dmg, 0x4fd1c5, { knockback: 180, stunTime: 1000 });
+  this.floatText(this.p.x, this.p.y - 20, '⚡衝撃波!', '#4fd1c5', '16px', 800);
+}
 
   useWeapon(n) {
     if (wear(weapon, n)) this.popup(`${weapon.name}が壊れた!攻撃力が下がる`, '#ff9a8a');
@@ -1291,7 +1375,8 @@ class Main extends Phaser.Scene {
     const ai = e.ai, rage = e.hp <= e.max * BOSS.rageAt, cd = rage ? BOSS.cdRage : BOSS.cd;
     if (rage && !ai.rage) { ai.rage = true; this.floatText(e.c.x, e.c.y - e.r - 30, '激昂!', '#ff6a6a', '20px', 1400); }
     // ★ 15階限定：無敵シールド＆魔力結晶（トーテム）生成判定
-    if (this.floor >= 15 && !e.isShielded) {
+    // ★ 10番の対応：15階以降の10の倍数階限定でバリア＆結晶展開
+    if (isTenFloor(this.floor) && !e.isShielded) {
       ai.nextShieldIdx = ai.nextShieldIdx || 0;
       if (ai.nextShieldIdx < BOSS.shieldThresholds.length) {
         const thresholdHp = e.max * BOSS.shieldThresholds[ai.nextShieldIdx];
@@ -1449,12 +1534,14 @@ class Main extends Phaser.Scene {
     });
 
     const p = this.p;
+    const hitSet = new Set();
     for (const e of this.enemies) {
       if (e.isAllyMinion) continue;
       const dx = e.c.x - p.x, dy = e.c.y - p.y;
       if (Math.hypot(dx, dy) > r + e.r) continue;
       if (half < Math.PI && Math.abs(angDiff(Math.atan2(dy, dx), a)) > half) continue;
-      
+        
+      hitSet.add(e);
       this.damage(e, dmg);
 
       if (opts.knockback && e.hp > 0) {
@@ -1535,9 +1622,9 @@ class Main extends Phaser.Scene {
     }
 
     if (e.boss) this.onBossDefeated();
-    else if (!e.isAllyMinion && Math.random() < DROP_RATE) this.giveArmor(randomSlot());
+    else if (!e.isAllyMinion && !e.isCrystal && !e.isMinion && Math.random() < DROP_RATE) this.giveArmor(randomSlot());
   }
-　　
+    
 
   onBossDefeated() {
     SAVE.cleared = Math.max(SAVE.cleared, this.floor);
@@ -1637,11 +1724,306 @@ class Main extends Phaser.Scene {
 
 class HudScene extends Phaser.Scene {
   constructor() { super('hud'); }
+
   create() {
-    this.text = this.add.text(10, 10, '', { fontFamily: 'system-ui, sans-serif', fontSize: '14px', color: '#e8eaf0', backgroundColor: 'rgba(14,16,21,0.75)', padding: { x: 8, y: 6 } }).setDepth(10);
-    if (this.pending) this.text.setText(this.pending);
+    this.uiGfx = this.add.graphics().setDepth(10);
+
+    // HPテキスト (HPゲージの上に重ねて表示)
+    this.hpText = this.add.text(125, 20, '', { 
+      fontFamily: 'system-ui, sans-serif', 
+      fontSize: '11px', 
+      color: '#ffffff', 
+      fontWeight: 'bold' 
+    }).setDepth(11);
+
+    // Lvバッジ表示用テキスト
+    this.lvText = this.add.text(38, 38, '', { 
+      fontFamily: 'system-ui, sans-serif', 
+      fontSize: '15px', 
+      color: '#ffd36a', 
+      fontWeight: 'bold' 
+    }).setOrigin(0.5).setDepth(12);
+
+    // ★ 割り振りステータス表示用テキスト (EXPバーの下)
+    this.statBonusText = this.add.text(72, 52, '', { 
+      fontFamily: 'system-ui, sans-serif', 
+      fontSize: '11px', 
+      color: '#e2e8f0', 
+      fontWeight: 'bold' 
+    }).setDepth(11);
+
+    // 画面中央上のボスHP数値テキスト
+    const w = this.scale.width, h = this.scale.height;
+    this.bossHpText = this.add.text(w / 2, 38, '', { 
+      fontFamily: 'system-ui, sans-serif', 
+      fontSize: '11px', 
+      color: '#ffffff', 
+      fontWeight: 'bold' 
+    }).setOrigin(0.5).setDepth(12);
+
+    // 左上のテキスト表示（階層・ナビ案内用 / 位置を少し下に調整）
+    this.text = this.add.text(10, 95, '', { 
+      fontFamily: 'system-ui, sans-serif', 
+      fontSize: '13px', 
+      color: '#e8eaf0', 
+      backgroundColor: 'rgba(14,16,21,0.65)', 
+      padding: { x: 8, y: 6 } 
+    }).setDepth(10);
+
+    // 画面左下の装備情報用テキストコンテナ
+    this.equipTexts = [];
+    for (let i = 0; i < 6; i++) {
+      const t = this.add.text(20, h - 145 + i * 22, '', { 
+        fontFamily: 'system-ui, sans-serif', 
+        fontSize: '11px', 
+        color: '#e8eaf0' 
+      }).setDepth(11);
+      this.equipTexts.push(t);
+    }
+
+    // 右下UIテキスト群（キーガイド＆数値）
+    const fontSt = { fontFamily: 'system-ui, sans-serif', fontWeight: 'bold' };
+    
+    this.dodgeText = this.add.text(w - 235, h - 78, 'Shift', { ...fontSt, fontSize: '11px', color: '#88aaff' }).setOrigin(0.5).setDepth(12);
+    this.dodgeCdText = this.add.text(w - 235, h - 30, '', { ...fontSt, fontSize: '11px' }).setOrigin(0.5).setDepth(12);
+
+    this.potSText = this.add.text(w - 175, h - 78, 'Q', { ...fontSt, fontSize: '12px', color: '#7cf0a0' }).setOrigin(0.5).setDepth(12);
+    this.potSCntText = this.add.text(w - 175, h - 30, '', { ...fontSt, fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(12);
+
+    this.potFText = this.add.text(w - 115, h - 78, 'R', { ...fontSt, fontSize: '12px', color: '#ff9a8a' }).setOrigin(0.5).setDepth(12);
+    this.potFCntText = this.add.text(w - 115, h - 30, '', { ...fontSt, fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(12);
+
+    this.skillText = this.add.text(w - 55, h - 78, 'E', { ...fontSt, fontSize: '12px', color: '#ffd36a' }).setOrigin(0.5).setDepth(12);
+    this.skillCdText = this.add.text(w - 55, h - 30, '', { ...fontSt, fontSize: '11px' }).setOrigin(0.5).setDepth(12);
+
+    if (this.pending) this.setLines(this.pending);
   }
-  setLines(lines) { this.pending = lines; if (this.text) this.text.setText(lines); }
+
+  setLines(lines) {
+    this.pending = lines;
+    if (!this.uiGfx) return;
+
+    this.uiGfx.clear();
+    const main = this.scene.get('main');
+    if (!main) return;
+
+    const now = this.time.now;
+    const w = this.scale.width, h = this.scale.height;
+
+    // ==========================================
+    // 1. 左上：ステータス＆HP/EXPパネル (ステータスボーナス表示追加！)
+    // ==========================================
+    // パネル枠（高さを少し広げてステータス行をゆったり格納！）
+    this.uiGfx.fillStyle(0x0e1015, 0.85);
+    this.uiGfx.fillRoundedRect(10, 10, 275, 76, 8);
+    this.uiGfx.lineStyle(2, 0x4a5568, 0.8);
+    this.uiGfx.strokeRoundedRect(10, 10, 275, 76, 8);
+
+    // Lvバッジ
+    this.uiGfx.fillStyle(0x1a202c, 1);
+    this.uiGfx.fillCircle(38, 42, 22);
+    this.uiGfx.lineStyle(2, 0xffd36a, 0.9);
+    this.uiGfx.strokeCircle(38, 42, 22);
+    this.lvText.setPosition(38, 42);
+    this.lvText.setText(`Lv.${PLAYER.lv}`);
+
+    // HPゲージ
+    const curHp = Math.max(0, main.hp);
+    const maxHpVal = maxHp();
+    const hpRatio = Math.min(1, Math.max(0, curHp / maxHpVal));
+    const hpBarWidth = 185;
+    const hpBarX = 72;
+
+    this.uiGfx.fillStyle(0x1a202c, 1);
+    this.uiGfx.fillRect(hpBarX, 18, hpBarWidth, 14);
+
+    const hpColor = hpRatio > 0.5 ? 0x48bb78 : hpRatio > 0.2 ? 0xecc94b : 0xf56565;
+    this.uiGfx.fillStyle(hpColor, 1);
+    this.uiGfx.fillRect(hpBarX, 18, hpBarWidth * hpRatio, 14);
+
+    this.uiGfx.lineStyle(1, 0xa0aec0, 0.5);
+    this.uiGfx.strokeRect(hpBarX, 18, hpBarWidth, 14);
+
+    // EXPゲージ
+    const expNeedVal = expNeed(PLAYER.lv);
+    const expRatio = Math.min(1, Math.max(0, PLAYER.exp / expNeedVal));
+
+    this.uiGfx.fillStyle(0x1a202c, 1);
+    this.uiGfx.fillRect(hpBarX, 38, hpBarWidth, 6);
+    this.uiGfx.fillStyle(0x4299e1, 1);
+    this.uiGfx.fillRect(hpBarX, 38, hpBarWidth * expRatio, 6);
+
+    this.hpText.setPosition(hpBarX + 45, 18);
+    this.hpText.setText(`HP ${curHp} / ${maxHpVal}`);
+
+    // ★ ステータスボーナス（振り分けポイント）の描画
+    const hpBonus = PLAYER.hpPts * HP_PER_PT;
+    const atkBonus = PLAYER.atkPts * ATK_PER_PT;
+    this.statBonusText.setText(`ボーナス: ❤️+${hpBonus}  ⚔️+${atkBonus}`);
+
+    // ナビテキストから不要な重複を削って整理
+    const filteredLines = lines.filter(l => 
+      !l.includes('Lv ') && !l.includes('ボス ') && !l.includes('[E]') && !l.includes('[Shift]') && 
+      !l.includes('[Q]') && !l.includes('[R]') && !l.includes('防具 ') && !l.includes('遺物 ') &&
+      !SLOT_KEYS.some(s => l.includes(`${ARMOR_TYPES[s].slot}:`)) && !l.includes(weapon.name)
+    );
+    const hudInfo = [
+      `💰 ${PLAYER.gold}G   pt: ${PLAYER.pts}`,
+      ...filteredLines.slice(2)
+    ];
+
+    if (this.text) {
+      this.text.setText(hudInfo.join('\n'));
+    }
+
+    // ==========================================
+    // 2. 画面中央上：ボス専用巨大HPバー
+    // ==========================================
+    if (main.boss && main.boss.hp > 0) {
+      const boss = main.boss;
+      const bCurHp = Math.max(0, Math.ceil(boss.hp));
+      const bMaxHp = boss.max;
+      const bRatio = Math.min(1, Math.max(0, bCurHp / bMaxHp));
+
+      const bBarWidth = 360, bBarHeight = 16;
+      const bBarX = (w - bBarWidth) / 2, bBarY = 24;
+
+      this.uiGfx.fillStyle(0x0e1015, 0.85);
+      this.uiGfx.fillRoundedRect(bBarX - 12, bBarY - 14, bBarWidth + 24, bBarHeight + 24, 6);
+      this.uiGfx.lineStyle(2, 0xb15cff, 0.8);
+      this.uiGfx.strokeRoundedRect(bBarX - 12, bBarY - 14, bBarWidth + 24, bBarHeight + 24, 6);
+
+      this.uiGfx.fillStyle(0x1a202c, 1);
+      this.uiGfx.fillRect(bBarX, bBarY, bBarWidth, bBarHeight);
+
+      const bColor = boss.isShielded ? 0x4fd1c5 : (boss.ai && boss.ai.rage ? 0xff4444 : 0xb15cff);
+      this.uiGfx.fillStyle(bColor, 1);
+      this.uiGfx.fillRect(bBarX, bBarY, bBarWidth * bRatio, bBarHeight);
+
+      this.uiGfx.lineStyle(1, 0xffffff, 0.6);
+      this.uiGfx.strokeRect(bBarX, bBarY, bBarWidth, bBarHeight);
+
+      this.bossHpText.setText(`BOSS HP ${bCurHp} / ${bMaxHp}${boss.isShielded ? ' [BARRIER]' : ''}`);
+    } else {
+      this.bossHpText.setText('');
+    }
+
+    // ==========================================
+    // 3. 画面左下：現在の装備＆耐久値表示パネル
+    // ==========================================
+    const eqList = [
+      { label: '武器', item: weapon },
+      { label: '兜',   item: EQUIPPED.helmet },
+      { label: '胸',   item: EQUIPPED.chest },
+      { label: '脚',   item: EQUIPPED.legs },
+      { label: '靴',   item: EQUIPPED.shoes },
+      { label: '遺物', item: artifactEq }
+    ];
+
+    const eqPanelX = 10;
+    const eqPanelY = h - 155;
+    const eqPanelW = 210;
+    const eqPanelH = 145;
+
+    this.uiGfx.fillStyle(0x0e1015, 0.85);
+    this.uiGfx.fillRoundedRect(eqPanelX, eqPanelY, eqPanelW, eqPanelH, 6);
+    this.uiGfx.lineStyle(1, 0x4a5568, 0.8);
+    this.uiGfx.strokeRoundedRect(eqPanelX, eqPanelY, eqPanelW, eqPanelH, 6);
+
+    const getItemName = (it) => {
+      if (!it) return '';
+      return it.label || it.name || '装備';
+    };
+
+    eqList.forEach((eq, i) => {
+      const item = eq.item;
+      const textObj = this.equipTexts[i];
+      const lineY = eqPanelY + 12 + i * 22;
+
+      if (!item) {
+        textObj.setText(`${eq.label}: なし`).setColor('#718096');
+      } else if (eq.label === '遺物') {
+        textObj.setText(`遺物: ${getItemName(item)}`).setColor('#d98cff');
+      } else {
+        const durRatio = Math.min(1, Math.max(0, item.dur / item.durMax));
+        const isBroken = item.dur <= 0;
+        
+        const nameText = `${eq.label}:${getItemName(item)}${plus(item)}`;
+        textObj.setText(nameText).setColor(isBroken ? '#e5534b' : '#ffffff');
+
+        const barX = eqPanelX + 130;
+        const barY = lineY + 3;
+        const barW = 65;
+        const barH = 8;
+
+        this.uiGfx.fillStyle(0x1a202c, 1);
+        this.uiGfx.fillRect(barX, barY, barW, barH);
+
+        const durCol = durRatio > 0.5 ? 0x48bb78 : durRatio > 0.2 ? 0xecc94b : 0xf56565;
+        this.uiGfx.fillStyle(durCol, 1);
+        this.uiGfx.fillRect(barX, barY, barW * durRatio, barH);
+
+        this.uiGfx.lineStyle(1, 0xa0aec0, 0.4);
+        this.uiGfx.strokeRect(barX, barY, barW, barH);
+      }
+    });
+
+    // ==========================================
+    // 4. 右下：アクション＆アイテムアイコンUI
+    // ==========================================
+    const radius = 24;
+    const cy = h - 50;
+//shift
+    const dodgeCdLeft = Math.max(0, main.nextDodge - now);
+    this.drawCoolDownSlot(w - 235, cy, radius, dodgeCdLeft, DODGE.cd, 0x2563eb, this.dodgeCdText);
+// subSkill
+    const subSkillCdLeft = Math.max(0, (main.nextSubSkill || 0) - now);
+    const subSkillMaxCd = 4000;
+    this.drawCoolDownSlot(w - 175, cy, radius, subSkillCdLeft, subSkillMaxCd, 0x4fd1c5, this.potSCntText);
+ // r
+    this.drawItemSlot(w - 115, cy, radius, POTIONS.full, 0xe53e3e, this.potFCntText);
+// e
+    const skillCdLeft = Math.max(0, main.nextSkill - now);
+    this.drawCoolDownSlot(w - 55, cy, radius, skillCdLeft, weapon.skill.cd, 0xd97706, this.skillCdText);
+  }
+
+  drawCoolDownSlot(cx, cy, radius, cdLeft, maxCd, bgCol, cdTextObj) {
+    const ratio = Math.min(1, Math.max(0, cdLeft / maxCd));
+
+    this.uiGfx.fillStyle(0x0e1015, 0.85);
+    this.uiGfx.fillCircle(cx, cy, radius);
+    this.uiGfx.lineStyle(2, bgCol, ratio > 0 ? 0.4 : 1.0);
+    this.uiGfx.strokeCircle(cx, cy, radius);
+
+    if (ratio > 0) {
+      this.uiGfx.fillStyle(0x000000, 0.7);
+      this.uiGfx.beginPath();
+      this.uiGfx.moveTo(cx, cy);
+      const startAngle = -Math.PI / 2;
+      const endAngle = startAngle + (Math.PI * 2 * ratio);
+      this.uiGfx.arc(cx, cy, radius - 1, startAngle, endAngle, false);
+      this.uiGfx.closePath();
+      this.uiGfx.fillPath();
+
+      cdTextObj.setText(`${(cdLeft / 1000).toFixed(1)}s`);
+      cdTextObj.setColor('#ffd36a');
+    } else {
+      cdTextObj.setText('READY');
+      cdTextObj.setColor('#48bb78');
+    }
+  }
+
+  drawItemSlot(cx, cy, radius, count, col, cntTextObj) {
+    const hasItem = count > 0;
+
+    this.uiGfx.fillStyle(0x0e1015, 0.85);
+    this.uiGfx.fillCircle(cx, cy, radius);
+    this.uiGfx.lineStyle(2, hasItem ? col : 0x4a5568, hasItem ? 1.0 : 0.4);
+    this.uiGfx.strokeCircle(cx, cy, radius);
+
+    cntTextObj.setText(`x${count}`);
+    cntTextObj.setColor(hasItem ? '#ffffff' : '#718096');
+  }
 }
 
 class MenuScene extends Phaser.Scene {
@@ -1667,6 +2049,7 @@ class StatScene extends MenuScene {
   spend(key) {
     if (PLAYER.pts <= 0) return;
     PLAYER.pts--; PLAYER[key]++;
+    saveGame();
     this.render();
   }
 
@@ -1724,14 +2107,26 @@ class PauseScene extends MenuScene {
 
 const TIER_COLORS = [0x8a6a4a, 0x9aa5b1, 0x4f8fd1, 0x7cf0d0];
 const itemColor = it => {
+  if (!it) return 0x1d2230; // 空の場合は背景色を返す
+  if (it.slot === 'potion') return it.kind === 'full' ? 0xe53e3e : 0x38a169;
   if (it.slot === 'weapon') {
     return it.isBossItem ? 0xd98cff : 0xc9a24a;
   }
-  return isArtifact(it) ? 0xb15cff : TIER_COLORS[it.tier];
+  return isArtifact(it) ? 0xb15cff : (TIER_COLORS[it.tier] || 0x8a6a4a);
 };
-const itemChar = it => it.slot === 'weapon' || isArtifact(it) ? it.name[0] : ARMOR_TYPES[it.slot].slot;
+
+const itemChar = it => {
+  if (!it) return ''; // 空の場合は文字なし
+  if (it.slot === 'potion') return '薬';
+  if (it.slot === 'weapon' || isArtifact(it)) {
+    return it.name ? it.name[0] : '?';
+  }
+  return (ARMOR_TYPES[it.slot] && ARMOR_TYPES[it.slot].slot) || '?';
+};
+
 const itemInfo = it => {
-  if (it.slot === 'weapon') return `${it.name}${plus(it)}  攻撃力 ${it.atk}  スキル:${it.skill.name}`;
+  if (!it) return '';
+  if (it.slot === 'weapon') return `${it.name}${plus(it)}  攻撃力 ${it.atk}  スキル:${it.skill ? it.skill.name : 'なし'}`;
   if (isArtifact(it)) return `${it.name} (${it.desc})`;
   return armorLabel(it);
 };
@@ -1745,14 +2140,34 @@ const drawSlots = (scene, slots, st) => {
   slots.forEach(s => gr.fillRect(s.x - 32, s.y - 32, 64, 64).strokeRect(s.x - 32, s.y - 32, 64, 64));
   SLOT_ORDER.forEach((s, i) => scene.add.text(562, 110 + i * 70, s === 'weapon' ? '武器' : s === 'artifact' ? '遺物' : ARMOR_TYPES[s].slot, st).setOrigin(0, 0.5));
 };
+// 【修正後】makeIcon 関数
 const makeIcon = (scene, it, x, y) => {
-  const r = it.dur / it.durMax, col = r > 0.5 ? 0x7cf0a0 : r > 0.2 ? 0xffd36a : 0xe5534b, f = { fontFamily: 'system-ui, sans-serif', color: '#ffffff' };
+  if (!it) {
+    return scene.add.container(x, y, [
+      scene.add.rectangle(0, 0, 56, 56, 0x1d2230)
+    ]);
+  }
+
+  // ★ dur や durMax が未定義の場合でも safe に 1 を入れる
+  const durMax = (it.durMax && it.durMax > 0) ? it.durMax : 1;
+  const dur = (it.dur != null) ? it.dur : durMax;
+  const r = Math.min(1, Math.max(0, dur / durMax));
+  const col = r > 0.5 ? 0x7cf0a0 : r > 0.2 ? 0xffd36a : 0xe5534b;
+  const f = { fontFamily: 'system-ui, sans-serif', color: '#ffffff' };
+
+  // ポーションの場合は個数(x個)、それ以外は耐久値を表示
+  const isPot = it.slot === 'potion';
+  const subText = isPot ? `x${it.stack || 1}` : (isArtifact(it) ? '' : String(dur));
+
   return scene.add.container(x, y, [
     scene.add.rectangle(0, 0, 56, 56, itemColor(it)),
     scene.add.text(0, -8, itemChar(it), { ...f, fontSize: '24px' }).setOrigin(0.5),
-    scene.add.text(0, 10, isArtifact(it) ? '' : String(it.dur), { ...f, fontSize: '11px' }).setOrigin(0.5),
-    scene.add.rectangle(-26, 23, 52, 5, 0x000000, 0.6).setOrigin(0, 0.5),
-    scene.add.rectangle(-26, 23, 52 * r, 5, col).setOrigin(0, 0.5),
+    scene.add.text(0, 10, subText, { ...f, fontSize: '11px', color: isPot ? '#ffd36a' : '#ffffff' }).setOrigin(0.5),
+    // 装備品の場合のみ耐久値ゲージを描画
+    ...(!isPot && !isArtifact(it) ? [
+      scene.add.rectangle(-26, 23, 52, 5, 0x000000, 0.6).setOrigin(0, 0.5),
+      scene.add.rectangle(-26, 23, 52 * r, 5, col).setOrigin(0, 0.5)
+    ] : []),
     ...(it.lv ? [scene.add.text(26, -26, `+${it.lv}`, { ...f, fontSize: '11px', color: '#ffd36a' }).setOrigin(1, 0)] : [])
   ]);
 };
@@ -1858,6 +2273,7 @@ class BlacksmithScene extends MenuScene {
 
   act(fn) {
     this.noteText.setText(fn() ? '' : 'ゴールドが足りません');
+    saveGame();
     this.render();
   }
 }
@@ -1926,7 +2342,7 @@ class StorageScene extends MenuScene {
   move(list, i) {
     const other = list === BACKPACK ? STORAGE : BACKPACK, j = other.indexOf(null);
     if (j < 0) this.note.setText('移動先に空きがありません');
-    else { other[j] = list[i]; list[i] = null; this.note.setText(''); }
+    else { other[j] = list[i]; list[i] = null; this.note.setText(''); saveGame();}
     this.render();
   }
 }
@@ -1965,8 +2381,28 @@ class ShopScene extends MenuScene {
     this.btn(660, 430, '閉じる', () => this.close());
   }
 
-  buy(kind) { this.note.setText(buyPotion(kind) ? `${POTION_DEF[kind].name}ポーションを買いました` : 'ゴールドが足りません'); this.render(); }
-  sell() { const p = sellFromPack(this.sel); this.note.setText(p ? `${p}G で売りました` : ''); this.sel = null; this.render(); }
+ buy(kind) {
+  const price = POTION_DEF[kind].price;
+  
+  // 1. 所持金チェック
+  if (PLAYER.gold < price) {
+    this.note.setText('ゴールドが足りません');
+    return;
+  }
+
+  // 2. ポーションを作成してバッグへ（自動スタック！）
+  const pot = createPotion(kind, 1);
+  if (addToPack(pot)) {
+    spendGold(price); // バッグに入ったらゴールド消費！
+    this.note.setText(`${POTION_DEF[kind].name}を買いました！`);
+    saveGame();
+  } else {
+    this.note.setText('バッグが満杯で購入できません！');
+  }
+
+  this.render();
+}
+  sell() { const p = sellFromPack(this.sel); this.note.setText(p ? `${p}G で売りました` : ''); this.sel = null; saveGame(); this.render(); }
 }
 
 new Phaser.Game({
