@@ -432,14 +432,14 @@ const BOSS = {
   shieldThresholds: [0.75, 0.50, 0.25] // シールド発動ライン
 };
 // 10の倍数階かどうかを判定するヘルパー関数
-const isTenFloor = f => f >= 15 && Math.floor(f) % 10 === 0;
+const isTenFloor = f => f >= 15 || Math.floor(f) % 10 === 0;
 
 // ★ Qスキル（3段階進化）の状態管理変数
 let qSkillLevel = 1; // 1 〜 3 段階
 const bossAtkFloorMult = floor => {
   const baseMult = 1 + 0.15 * (Math.max(1, floor) - 1);
   if (isTenFloor(floor)) {
-    return baseMult * SPECIAL_BOSS_ATK_MULT;
+    return baseMult * BOSS.specialBossAtkMult;
   }
   return baseMult;
 };
@@ -949,9 +949,9 @@ class Main extends Phaser.Scene {
     }
     // ★ 15階以上なら超高HP（22倍）、それ未満なら通常のボスHP倍率（6倍）を適用
     if (isSub(this.floor)) {
-      const hpMult = isTenFloor(this.floor) ? BOSS.hpMultSpecial : BOSS.hpMult;
-      this.boss = this.spawnEnemy(this.stairs.x, this.stairs.y, Math.round(eh * hpMult), BOSS, true);
-    }
+  const hpMult = this.floor >= 15 ? BOSS.hpMultSpecial : BOSS.hpMult;
+  this.boss = this.spawnEnemy(this.stairs.x, this.stairs.y, Math.round(eh * hpMult), BOSS, true);
+}
   }
 
   spawnEnemy(x, y, hp, def = ENEMY, boss = false) {
