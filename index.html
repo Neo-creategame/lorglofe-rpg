@@ -360,7 +360,8 @@ const BOSS = {
   attackRange: 340, firstDelay: 1500, cd: 2200, cdRage: 1400, rageAt: 0.5,
   shotDmg: 12, dashSpeed: 430, dashTime: 600, dashMult: 1.5,
   minCallFloor: 3.5, maxMinions: 3,
-  hpMult15F: 22.0, // 通常ボス(6倍)の約3.6倍＝22倍の超高HP
+  hpMultSpecial: 50.0, // 通常ボス(6倍)の約3.6倍＝22倍の超高HP
+  specialBossAtkMult: 5.0,
   shieldThresholds: [0.75, 0.50, 0.25] // シールド発動ライン
 };
 
@@ -834,7 +835,7 @@ class Main extends Phaser.Scene {
     }
     // ★ 15階以上なら超高HP（22倍）、それ未満なら通常のボスHP倍率（6倍）を適用
     if (isSub(this.floor)) {
-      const hpMult = this.floor >= 15 ? BOSS.hpMult15F : BOSS.hpMult;
+      const hpMult = this.floor >= 15 ? BOSS.hpMultSpecial : BOSS.hpMult;
       this.boss = this.spawnEnemy(this.stairs.x, this.stairs.y, Math.round(eh * hpMult), BOSS, true);
     }
   }
