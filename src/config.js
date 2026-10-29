@@ -30,6 +30,8 @@ export const GOLD = { start: 100, perKill: 6, perFloor: 4, bossMult: 10 };
 
 // アクション設定
 export const DODGE = { dist: 110, time: 180, cd: 900, grace: 120 };
+// 防具の最大軽減率（60%）
+export const RED_CAP = 0.6;
 export const DURABILITY = { weaponAttack: 1, weaponSkill: 2, armorHit: 1, brokenAtkMult: 0.5 };
 
 // 街施設＆ポーション＆鍛冶屋設定
