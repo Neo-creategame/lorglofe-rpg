@@ -10,8 +10,8 @@ import {
 } from '../map.js';
 import {
   weapon, artifactEq, maxHp, atkTotal, saveGame,
-  isSub, nextFloor, floorIdx, durLabel, armorLines, plus,
-  armorStats, takeDamage, wear, wearArmor,
+  isSub, nextFloor, floorIdx, plus,
+  armorStats, wear, wearArmor,
   addToPack, goldFor, bossDmgMult,
   angDiff
 } from '../utils.js';
