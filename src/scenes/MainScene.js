@@ -13,7 +13,7 @@ import {
   isSub, nextFloor, floorIdx, plus,
   armorStats, wear, wearArmor,
   addToPack, goldFor, bossDmgMult,
-  angDiff
+  angDiff, takeDamage, durLabel, armorLines, BACKPACK, syncPotionCounts
 } from '../utils.js';
 import {
   WEAPONS, rollWeapon, rollArmor, rollArtifact,
@@ -490,6 +490,8 @@ export class MainScene extends Phaser.Scene {
     const pot = BACKPACK[index];
     pot.stack--;
     if (pot.stack <= 0) BACKPACK[index] = null;
+
+    syncPotionCounts();
 
     const healHp = Math.ceil(maxHp() * POTION_DEF[kind].pct);
     this.hp = Math.min(maxHp(), this.hp + healHp);
