@@ -1,5 +1,5 @@
 // src/entities/items.js
-import { SMITH, POTION_DEF, SHOP, ARTIFACT } from '../config.js';
+import { SMITH, POTION_DEF, SHOP, } from '../config.js';
 
 // 武器マスタ定義
 export const WEAPONS = {
