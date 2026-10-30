@@ -33,6 +33,8 @@ export const DODGE = { dist: 110, time: 180, cd: 900, grace: 120 };
 // 防具の最大軽減率（60%）
 export const RED_CAP = 0.6;
 export const DURABILITY = { weaponAttack: 1, weaponSkill: 2, armorHit: 1, brokenAtkMult: 0.5 };
+export const DROP_RATE = 0.2;
+export const ARTIFACT = { dropRate: 0.5 };
 
 // 街施設＆ポーション＆鍛冶屋設定
 export const TOWN_SHOPS = [['お店', 6, 5], ['宿屋', 17, 5], ['鍛冶屋', 28, 5], ['倉庫', 6, 14]];
