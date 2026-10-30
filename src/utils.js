@@ -18,6 +18,20 @@ export let artifactEq = null;
 export const setWeapon = w => { weapon = w; };
 export const setArtifactEq = a => { artifactEq = a; };
 
+// バックパック内のポーション数を POTIONS オブジェクト（UI表示用）に同期させる関数
+export function syncPotionCounts() {
+  let smallCount = 0;
+  let fullCount = 0;
+  for (const item of BACKPACK) {
+    if (item && item.slot === 'potion') {
+      if (item.kind === 'small') smallCount += (item.stack || 1);
+      if (item.kind === 'full') fullCount += (item.stack || 1);
+    }
+  }
+  POTIONS.small = smallCount;
+  POTIONS.full = fullCount;
+}
+
 // バックパックへのアイテム格納
 export function addToPack(it) {
   if (it.slot === 'potion') {
@@ -27,6 +41,7 @@ export function addToPack(it) {
         const space = slotItem.maxStack - slotItem.stack;
         if (it.stack <= space) {
           slotItem.stack += it.stack;
+          syncPotionCounts();
           return true;
         } else {
           slotItem.stack = slotItem.maxStack;
@@ -39,6 +54,7 @@ export function addToPack(it) {
   const emptyIndex = BACKPACK.indexOf(null);
   if (emptyIndex < 0) return false;
   BACKPACK[emptyIndex] = it;
+  syncPotionCounts();
   return true;
 }
 
@@ -48,6 +64,7 @@ export const setEq = (s, it) => { if (s === 'weapon') weapon = it; else if (s ==
 // セーブ＆ロード処理
 export function saveGame() {
   try {
+    syncPotionCounts();
     const data = {
       cleared: SAVE.cleared,
       player: { ...PLAYER },
@@ -74,7 +91,6 @@ export function loadGame() {
 
     SAVE.cleared = data.cleared || 0;
     Object.assign(PLAYER, data.player);
-    Object.assign(POTIONS, data.potions);
     if (data.weapon) setWeapon(data.weapon);
     if (data.artifactEq) setArtifactEq(data.artifactEq);
 
@@ -82,6 +98,7 @@ export function loadGame() {
     if (data.backpack) data.backpack.forEach((item, i) => { BACKPACK[i] = item; });
     if (data.storage) data.storage.forEach((item, i) => { STORAGE[i] = item; });
 
+    syncPotionCounts();
     return true;
   } catch (e) {
     console.error('ロード失敗:', e);
@@ -138,7 +155,15 @@ export const repairAll = () => { const c = repairAllCost(); if (c <= 0 || !spend
 export const upgradeItem = it => { if (!canUpgrade(it) || !spendGold(upgradeCost(it))) return false; Object.assign(it, upgradedStats(it)); it.lv = (it.lv || 0) + 1; return true; };
 
 export const goldFor = (floor, boss) => (GOLD.perKill + GOLD.perFloor * floor) * (boss ? GOLD.bossMult : 1);
-export const sellFromPack = i => { const it = BACKPACK[i]; if (!it) return 0; const p = sellPrice(it); BACKPACK[i] = null; PLAYER.gold += p; return p; };
+export const sellFromPack = i => {
+  const it = BACKPACK[i];
+  if (!it) return 0;
+  const p = sellPrice(it);
+  BACKPACK[i] = null;
+  PLAYER.gold += p;
+  syncPotionCounts();
+  return p;
+};
 
 // 算術＆マップ判定ヘルパー
 export function rng(seed) {
@@ -150,7 +175,6 @@ export function rng(seed) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
-// src/utils.js の末尾に追記
 
 // 耐久度のラベル表示
 export const durLabel = it => !it || isArtifact(it) || it.slot === 'potion' ? '' : `耐久 ${it.dur}/${it.durMax}`;
