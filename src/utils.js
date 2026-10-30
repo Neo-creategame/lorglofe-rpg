@@ -150,7 +150,26 @@ export function rng(seed) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
+// src/utils.js の末尾に追記
 
+// 耐久度のラベル表示
+export const durLabel = it => !it || isArtifact(it) || it.slot === 'potion' ? '' : `耐久 ${it.dur}/${it.durMax}`;
+
+// HUD表示用の防具一覧文字列
+export const armorLines = () => {
+  return Object.entries(EQUIPPED).map(([slotKey, item]) => {
+    const slotName = slotKey === 'helmet' ? '兜' : slotKey === 'chest' ? '胸' : slotKey === 'legs' ? '脚' : '靴';
+    if (!item) return `${slotName}: なし`;
+    return `${slotName}: ${armorLabel(item)} ${durLabel(item)}`;
+  });
+};
+
+// ダメージ計算（防御軽減率の適用）
+export function takeDamage(rawDmg) {
+  const { red } = armorStats();
+  const actualDmg = Math.max(1, Math.round(rawDmg * (1 - red)));
+  return actualDmg;
+}
 export const isSub = f => !Number.isInteger(f);
 export const nextFloor = f => f === 0 ? 1 : f + 0.5;
 export const floorIdx = f => Math.round(f * 2) - 1;
