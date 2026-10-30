@@ -132,7 +132,6 @@ export const ARTIFACT_LIST = [
   { name: '深淵の眼', typeKey: 'crisisAtk', typeName: 'ピンチ時攻撃力', val: 30, unit: '%', desc: 'HP30%以下で攻撃力 +30%' },
   { name: '古王の王冠', typeKey: 'hpPct', typeName: '最大HP', val: 20, unit: '%', desc: '最大HP +20%' }
 ];
-export const ARTIFACT = { dropRate: 0.5 };
 
 export function rollArtifact() {
   const fixed = ARTIFACT_LIST[Math.floor(Math.random() * ARTIFACT_LIST.length)];
