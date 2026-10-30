@@ -1,6 +1,6 @@
 // src/entities/player.js
 import { Q_SKILL_STATS } from '../config.js';
-import { weapon, atkTotal,  } from '../utils.js';
+import { weapon, atkTotal } from '../utils.js';
 import { free } from '../map.js';
 
 // ★ Qスキル（3段階進化）の状態管理変数
