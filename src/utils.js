@@ -3,7 +3,10 @@ import {
   T, W, H, SAVE_KEY, SAVE, PLAYER, POTIONS, GOLD, PLAYER_HP, HP_PER_PT, ATK_PER_PT,
   SLOT_KEYS, RED_CAP, DURABILITY
 } from './config.js';
-import { rollWeapon, isArtifact, isWeapon, repairCost, upgradeCost, upgradedStats, canUpgrade } from './entities/items.js';
+import { rollWeapon, isArtifact, isWeapon, repairCost, upgradeCost, upgradedStats, canUpgrade, plus } from './entities/items.js';
+
+// plus 関数を再エクスポート
+export { plus };
 
 // グローバルインベントリ状態
 export const PACK_COLS = 5;
