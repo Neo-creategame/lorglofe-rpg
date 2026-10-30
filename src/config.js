@@ -41,6 +41,8 @@ export const POTION_DEF = { small: { name: '小回復', pct: 0.25, price: 250 },
 export const SHOP = { sellPerAtk: 0.8, sellPerArmor: 2, sellPerArtifactPct: 15 };
 export const DEATH = { respawnHpPct: 0.1, durKeep: 0.5 };
 export const SMITH = { repairPerPt: 1, weaponRepairMult: 1.5, upMax: 5, upBase: 120, upGrowth: 1.7, weaponUpMult: 1.5, upStep: 0.10 };
+// 装備部位のスロットキー一覧
+export const SLOT_KEYS = ['helmet', 'chest', 'legs', 'shoes'];
 
 // 描画関係・グローバル状態
 export const STAIRS_OPEN = 0xffd36a;
