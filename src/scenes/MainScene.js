@@ -223,7 +223,7 @@ export class MainScene extends Phaser.Scene {
       up: 'W', down: 'S', left: 'A', right: 'D',
       up2: 'UP', down2: 'DOWN', left2: 'LEFT', right2: 'RIGHT',
       atk: 'SPACE', skill: 'E', bag: 'I', dodge: 'SHIFT', use: 'F', pause: 'TAB',
-      subSkill: 'Q', potF: 'R', bossWeapon1: 'ONE', bossWeapon2: 'TWO', bossWeapon3: 'THREE', bossWeapon4: 'FOUR'
+      subSkill: 'Q', potSmall: 'C', potF: 'R', bossWeapon1: 'ONE', bossWeapon2: 'TWO', bossWeapon3: 'THREE', bossWeapon4: 'FOUR'
     });
 
     this.input.on('pointerdown', () => this.attack());
@@ -327,6 +327,7 @@ export class MainScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(k.bossWeapon4)) this.obtainBossWeapon('lightning_staff');
 
     if (Phaser.Input.Keyboard.JustDown(k.subSkill)) this.subSkill();
+    if (Phaser.Input.Keyboard.JustDown(k.potSmall)) this.usePotion('small');
     if (Phaser.Input.Keyboard.JustDown(k.potF)) this.usePotion('full');
     if (Phaser.Input.Keyboard.JustDown(k.bag) && !this.leaving) {
       this.scene.pause();
